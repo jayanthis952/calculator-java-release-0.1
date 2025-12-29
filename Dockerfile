@@ -1,6 +1,6 @@
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
-RUN apk update && apk install curl
+RUN apk update && apk add curl
 ARG NEXUS_USER
 ARG NEXUS_PASS
 ARG NEXUS_URL
