@@ -31,18 +31,14 @@ pipeline {
                 }
             }
             post {
-                success {
-                    echo "Quality Gate Passed"
-                }
-                failure {
-                    echo "Quality Gate Failed"
-                }
+                success { echo "Quality Gate Passed" }
+                failure { echo "Quality Gate Failed" }
             }
         }
 
         stage('Build') {
             steps {
-                sh """mvn clean install -Drevision=${VERSION}"""
+                sh "mvn clean install -Drevision=${VERSION}"
             }
         }
 
@@ -57,7 +53,7 @@ pipeline {
                     ]],
                     credentialsId: 'nexus-creds',
                     groupId: 'com.example',
-                    nexusUrl: '34.227.76.252:30002',   // FIXED: removed extra http://
+                    nexusUrl: '34.227.76.252:30002',
                     nexusVersion: 'nexus3',
                     protocol: 'http',
                     repository: 'maven-releases',
@@ -67,15 +63,12 @@ pipeline {
         }
 
         stage('Docker Image Build') {
-            agent any
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'nexus-creds',
-                        usernameVariable: 'NEXUS_USER',
-                        passwordVariable: 'NEXUS_PASS'
-                    )
-                ]) {  
+                withCredentials([usernamePassword(
+                    credentialsId: 'nexus-creds',
+                    usernameVariable: 'NEXUS_USER',
+                    passwordVariable: 'NEXUS_PASS'
+                )]) {  
                     sh """
                         docker build \
                         --build-arg NEXUS_URL=http://34.227.76.252:30002 \
@@ -89,7 +82,6 @@ pipeline {
         }
 
         stage('Image to ECR') {
-            agent any
             steps {
                 withAWS(credentials: 'jenkins-ecr', region: 'us-east-1') {
                     sh """
