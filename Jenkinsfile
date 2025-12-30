@@ -3,12 +3,10 @@ pipeline {
 
     environment {
         NEXUS_URL = "http://34.227.76.252:30002"
-        DOCKER_IMAGE = ""
         ECR_REPO = "772317732952.dkr.ecr.us-east-1.amazonaws.com/calculator-java"
     }
 
     stages {
-
         stage('Checkout SCM') {
             steps {
                 git url: 'https://github.com/jayanthis952/calculator-java-release-0.1.git', branch: 'main'
@@ -24,13 +22,16 @@ pipeline {
         stage('Set Version') {
             steps {
                 script {
-                    // Get version from pom.xml
-                    VERSION = sh(
+                    // Properly declare VERSION
+                    def VERSION = sh(
                         script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout",
                         returnStdout: true
                     ).trim()
                     echo "Project version: ${VERSION}"
+                    
+                    // Set DOCKER_IMAGE as environment variable so all stages can use it
                     env.DOCKER_IMAGE = "calculator-java:${VERSION}"
+                    env.VERSION = VERSION
                 }
             }
         }
@@ -43,11 +44,11 @@ pipeline {
                         protocol: 'http',
                         nexusUrl: "${NEXUS_URL.replaceAll('http://','')}",
                         groupId: 'com.example',
-                        version: "${VERSION}",
+                        version: "${env.VERSION}",
                         repository: 'maven-releases',
                         credentialsId: 'nexus-creds',
                         artifacts: [
-                            [artifactId: 'calculator-java', classifier: '', file: "target/calculator-java-${VERSION}.jar", type: 'jar']
+                            [artifactId: 'calculator-java', classifier: '', file: "target/calculator-java-${env.VERSION}.jar", type: 'jar']
                         ]
                     )
                 }
@@ -62,8 +63,8 @@ pipeline {
                         --build-arg NEXUS_USER=${NEXUS_USER} \
                         --build-arg NEXUS_PASS=${NEXUS_PASS} \
                         --build-arg NEXUS_URL=${NEXUS_URL} \
-                        --build-arg VERSION=${VERSION} \
-                        -t ${DOCKER_IMAGE} .
+                        --build-arg VERSION=${env.VERSION} \
+                        -t ${env.DOCKER_IMAGE} .
                     """
                 }
             }
@@ -78,8 +79,8 @@ pipeline {
                         aws configure set default.region us-east-1
 
                         aws ecr get-login-password | docker login --username AWS --password-stdin 772317732952.dkr.ecr.us-east-1.amazonaws.com
-                        docker tag ${DOCKER_IMAGE} ${ECR_REPO}:${VERSION}
-                        docker push ${ECR_REPO}:${VERSION}
+                        docker tag ${env.DOCKER_IMAGE} ${ECR_REPO}:${env.VERSION}
+                        docker push ${ECR_REPO}:${env.VERSION}
                     """
                 }
             }
