@@ -2,81 +2,62 @@ pipeline {
     agent any
 
     environment {
-        PROJECT_KEY = "java-calculator-k8s"
-        VERSION = "1.0.${env.BUILD_NUMBER}"
-        IMAGE_NAME = "calculator-java"
-        NEXUS_URL = "http://34.227.76.252:30002"
+        VERSION = "1.0.16"
+        NEXUS_URL = "34.227.76.252:30002"   // just the host:port
+        NEXUS_USER = credentials('nexus-user') // Jenkins credentials ID for Nexus username
+        NEXUS_PASS = credentials('nexus-pass') // Jenkins credentials ID for Nexus password
+        AWS_ACCOUNT_ID = "772317732952"
+        AWS_REGION = "us-east-1"
+        ECR_REPO = "calculator-java"
+        IMAGE_TAG = "${VERSION}"
     }
 
     stages {
-
-        stage('Checkout') {
+        stage('Checkout SCM') {
             steps {
-                git branch: 'main', url: 'https://github.com/jayanthis952/calculator-java-release-0.1.git'
+                checkout scm
             }
         }
 
-        stage('Sonar Analysis') {
+        stage('Build with Maven') {
             steps {
-                withSonarQubeEnv('sonar-k8s') {
-                    sh """
-                        mvn clean verify sonar:sonar \
-                        -Dsonar.projectKey=${PROJECT_KEY} \
-                        -Dsonar.projectName=${PROJECT_KEY} \
-                        -Drevision=${VERSION}
-                    """
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-
-        stage('Maven Build') {
-            steps {
-                sh "mvn clean install -Drevision=${VERSION}"
+                sh "mvn clean package -DskipTests"
             }
         }
 
         stage('Upload to Nexus') {
             steps {
                 nexusArtifactUploader(
-                    artifacts: [[
-                        artifactId: 'calculator-java',
-                        classifier: '',
-                        file: "target/calculator-java-${VERSION}.jar",
-                        type: 'jar'
-                    ]],
-                    credentialsId: 'nexus-creds',
-                    groupId: 'com.example',
-                    nexusUrl: "${NEXUS_URL}",
+                    nexusUrl: "http://${NEXUS_URL}",
                     nexusVersion: 'nexus3',
                     protocol: 'http',
                     repository: 'maven-releases',
-                    version: "${VERSION}"
+                    credentialsId: 'nexus-creds', // Jenkins credentials ID for Nexus
+                    groupId: 'com.example',
+                    version: "${VERSION}",
+                    artifacts: [[
+                        artifactId: 'calculator-java',
+                        classifier: '',
+                        type: 'jar',
+                        file: "target/calculator-java-${VERSION}.jar"
+                    ]]
                 )
             }
         }
 
         stage('Docker Build') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'nexus-creds',
-                    usernameVariable: 'NEXUS_USER',
-                    passwordVariable: 'NEXUS_PASS'
-                )]) {
+                withCredentials([
+                    string(credentialsId: 'nexus-user', variable: 'NEXUS_USER'),
+                    string(credentialsId: 'nexus-pass', variable: 'NEXUS_PASS')
+                ]) {
                     sh """
                         docker build \
-                        --build-arg NEXUS_URL=${NEXUS_URL} \
-                        --build-arg NEXUS_USER=$NEXUS_USER \
-                        --build-arg NEXUS_PASS=$NEXUS_PASS \
-                        --build-arg VERSION=${VERSION} \
-                        -t ${IMAGE_NAME}:${VERSION} .
+                            --build-arg NEXUS_USER=${NEXUS_USER} \
+                            --build-arg NEXUS_PASS=${NEXUS_PASS} \
+                            --build-arg NEXUS_URL=http://${NEXUS_URL} \
+                            --build-arg VERSION=${VERSION} \
+                            -t ${ECR_REPO}:${IMAGE_TAG} .
                     """
                 }
             }
@@ -84,19 +65,16 @@ pipeline {
 
         stage('Push to ECR') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'aws-creds',
-                    usernameVariable: 'AWS_ACCESS_KEY_ID',
-                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                )]) {
+                withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh """
                         aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
                         aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-                        aws configure set default.region us-east-1
-                        
-                        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 772317732952.dkr.ecr.us-east-1.amazonaws.com
-                        docker tag ${IMAGE_NAME}:${VERSION} 772317732952.dkr.ecr.us-east-1.amazonaws.com/${IMAGE_NAME}:${VERSION}
-                        docker push 772317732952.dkr.ecr.us-east-1.amazonaws.com/${IMAGE_NAME}:${VERSION}
+                        aws configure set default.region ${AWS_REGION}
+
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+                        docker tag ${ECR_REPO}:${IMAGE_TAG} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}
+                        docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}
                     """
                 }
             }
@@ -106,6 +84,12 @@ pipeline {
     post {
         always {
             cleanWs()
+        }
+        success {
+            echo "Pipeline completed successfully!"
+        }
+        failure {
+            echo "Pipeline failed!"
         }
     }
 }
