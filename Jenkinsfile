@@ -1,5 +1,5 @@
 pipeline{
-    agent {label 'node2'}
+    agent any
     environment{
         PROJECT_KEY="java-calculator-k8s"
         VERSION="1.0.${env.BUILD_NUMBER}"
@@ -8,7 +8,7 @@ pipeline{
     stages{
         stage('SCM'){
             steps{
-                git branch: 'main', url: 'https://github.com/Agasthyahm/calculator-java-release.git'
+                git branch: 'main', url: 'https://github.com/jayanthis952/calculator-java-release-0.1.git'
             }
         }
         stage('sonar analysis'){
@@ -46,7 +46,7 @@ pipeline{
         stage('Nexus-artifactory'){
             steps{
                 nexusArtifactUploader artifacts: [[artifactId: 'calculator-java', classifier: '', file: "target/calculator-java-${VERSION}.jar", type: 'jar']],
-                    credentialsId: 'nexus-cred', groupId: 'com.example', nexusUrl: '16.16.104.141:30003', nexusVersion: 'nexus3', protocol: 
+                    credentialsId: 'nexus-cred', groupId: 'com.example', nexusUrl: '34.227.76.252:30002', nexusVersion: 'nexus3', protocol: 
                     'http', repository: 'maven-releases', version: "${VERSION}"
             }
         }
@@ -57,7 +57,7 @@ pipeline{
                 {  
                     sh """
                          docker build \
-                         --build-arg NEXUS_URL=http://16.16.104.141:30003 \
+                         --build-arg NEXUS_URL=http://34.227.76.252:30002 \
                          --build-arg NEXUS_USER=$NEXUS_USER \
                          --build-arg NEXUS_PASS=$NEXUS_PASS \
                          --build-arg VERSION=${VERSION} \
@@ -67,14 +67,14 @@ pipeline{
            }
         }
         stage('Image to ECR'){
-            agent {label 'node3'}
+            agent any
             steps{
-                withAWS(credentials:'jenkins-ecr',region:'eu-north-1')
+                withAWS(credentials:'jenkins-ecr',region:'us-east-1')
                 {
                     sh """
-                        aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 429219761476.dkr.ecr.eu-north-1.amazonaws.com
-                        docker tag ${IMAGE_NAME}:${VERSION} 429219761476.dkr.ecr.eu-north-1.amazonaws.com/calculator-java:${VERSION}
-                        docker push 429219761476.dkr.ecr.eu-north-1.amazonaws.com/calculator-java:${VERSION}
+                        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 772317732952.dkr.ecr.us-east-1.amazonaws.com
+                        docker tag ${IMAGE_NAME}:${VERSION} 772317732952.dkr.ecr.us-east-1.amazonaws.com/calculator-java:${VERSION}
+                        docker push 772317732952.dkr.ecr.us-east-1.amazonaws.com/calculator-java:${VERSION}
                         """
                 }
             }
