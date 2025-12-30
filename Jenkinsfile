@@ -67,7 +67,7 @@ pipeline {
         }
 
         stage('Docker Image Build') {
-            agent any
+            agent { node1 }
             steps {
                 withCredentials([
                     usernamePassword(
