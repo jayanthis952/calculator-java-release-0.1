@@ -2,9 +2,8 @@ pipeline {
     agent any
 
     environment {
-        VERSION = "1.0.16"
         NEXUS_URL = "http://34.227.76.252:30002"
-        DOCKER_IMAGE = "calculator-java:${VERSION}"
+        DOCKER_IMAGE = ""
         ECR_REPO = "772317732952.dkr.ecr.us-east-1.amazonaws.com/calculator-java"
     }
 
@@ -19,6 +18,20 @@ pipeline {
         stage('Build & Test') {
             steps {
                 sh 'mvn clean install'
+            }
+        }
+
+        stage('Set Version') {
+            steps {
+                script {
+                    // Get version from pom.xml
+                    VERSION = sh(
+                        script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout",
+                        returnStdout: true
+                    ).trim()
+                    echo "Project version: ${VERSION}"
+                    env.DOCKER_IMAGE = "calculator-java:${VERSION}"
+                }
             }
         }
 
@@ -63,7 +76,7 @@ pipeline {
                         aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
                         aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
                         aws configure set default.region us-east-1
-                        
+
                         aws ecr get-login-password | docker login --username AWS --password-stdin 772317732952.dkr.ecr.us-east-1.amazonaws.com
                         docker tag ${DOCKER_IMAGE} ${ECR_REPO}:${VERSION}
                         docker push ${ECR_REPO}:${VERSION}
@@ -75,7 +88,7 @@ pipeline {
 
     post {
         always {
-            cleanWs() // no node block needed here in declarative pipeline
+            cleanWs()
         }
     }
 }
