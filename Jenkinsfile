@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        VERSION = "1.0.16"  // Update version as needed
+        VERSION = "1.0.16"
         NEXUS_URL = "http://34.227.76.252:30002"
         DOCKER_IMAGE = "calculator-java:${VERSION}"
         ECR_REPO = "772317732952.dkr.ecr.us-east-1.amazonaws.com/calculator-java"
@@ -75,9 +75,7 @@ pipeline {
 
     post {
         always {
-            node {
-                cleanWs()
-            }
+            cleanWs() // no node block needed here in declarative pipeline
         }
     }
 }
