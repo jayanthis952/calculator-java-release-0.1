@@ -4,7 +4,9 @@ pipeline {
         PROJECT_KEY = "java-calculator-k8s"
         VERSION = "1.0.${env.BUILD_NUMBER}"
         IMAGE_NAME = "calculator-java"
-        NEXUS_URL = "http://34.227.76.252:30002" // Fixed Nexus URL
+        NEXUS_URL = "http://34.227.76.252:30002"
+        ECR_REPO = "772317732952.dkr.ecr.us-east-1.amazonaws.com/calculator-java"
+        AWS_REGION = "us-east-1"
     }
     stages {
 
@@ -54,7 +56,7 @@ pipeline {
                     ]],
                     credentialsId: 'nexus-creds',
                     groupId: 'com.example',
-                    nexusUrl: '34.227.76.252:30002', // ✅ No double http://
+                    nexusUrl: '34.227.76.252:30002',
                     nexusVersion: 'nexus3',
                     protocol: 'http',
                     repository: 'maven-releases',
@@ -84,11 +86,18 @@ pipeline {
 
         stage('Push Docker Image to ECR') {
             steps {
-                withAWS(credentials: 'jenkins-ecr', region: 'us-east-1') {
+                withCredentials([usernamePassword(
+                    credentialsId: 'aws-creds',
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
                     sh """
-                        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 772317732952.dkr.ecr.us-east-1.amazonaws.com
-                        docker tag ${IMAGE_NAME}:${VERSION} 772317732952.dkr.ecr.us-east-1.amazonaws.com/${IMAGE_NAME}:${VERSION}
-                        docker push 772317732952.dkr.ecr.us-east-1.amazonaws.com/${IMAGE_NAME}:${VERSION}
+                        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+                        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+                        aws configure set default.region ${AWS_REGION}
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                        docker tag ${IMAGE_NAME}:${VERSION} ${ECR_REPO}:${VERSION}
+                        docker push ${ECR_REPO}:${VERSION}
                     """
                 }
             }
