@@ -1,17 +1,18 @@
 pipeline {
     agent any
+
     environment {
         PROJECT_KEY = "java-calculator-k8s"
         VERSION = "1.0.${env.BUILD_NUMBER}"
         IMAGE_NAME = "calculator-java"
-        ECR_ACCOUNT = "772317732952"
-        ECR_REGION = "us-east-1"
+        ECR_REGISTRY = "772317732952.dkr.ecr.us-east-1.amazonaws.com"
         ECR_REPO = "calculator-java"
-        NEXUS_URL = "http://34.227.76.252:30002"
+        NEXUS_URL = "http://34.227.76.252:30002"  // FIXED: no double http
     }
 
     stages {
-        stage('SCM Checkout') {
+
+        stage('Checkout SCM') {
             steps {
                 git branch: 'main', url: 'https://github.com/jayanthis952/calculator-java-release-0.1.git'
             }
@@ -30,7 +31,7 @@ pipeline {
             }
         }
 
-        stage('Quality Gate') {
+        stage('Quality Gate Validate') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
@@ -42,7 +43,7 @@ pipeline {
             }
         }
 
-        stage('Build JAR') {
+        stage('Build Maven Project') {
             steps {
                 sh "mvn clean install -Drevision=${VERSION}"
             }
@@ -74,7 +75,7 @@ pipeline {
                     credentialsId: 'nexus-creds',
                     usernameVariable: 'NEXUS_USER',
                     passwordVariable: 'NEXUS_PASS'
-                )]) {  
+                )]) {
                     sh """
                         docker build \
                         --build-arg NEXUS_URL=${NEXUS_URL} \
@@ -87,29 +88,18 @@ pipeline {
             }
         }
 
-        stage('Push to ECR') {
+        stage('Push Docker Image to ECR') {
             steps {
-                withAWS(credentials: 'jenkins-ecr', region: "${ECR_REGION}") {
-                    script {
-                        // Check if ECR repo exists, create if not
-                        def repoExists = sh(
-                            script: "aws ecr describe-repositories --repository-names ${ECR_REPO} || true",
-                            returnStatus: true
-                        )
-                        if (repoExists != 0) {
-                            sh "aws ecr create-repository --repository-name ${ECR_REPO} --region ${ECR_REGION}"
-                        }
-
-                        // Login and push image
-                        sh """
-                            aws ecr get-login-password --region ${ECR_REGION} | docker login --username AWS --password-stdin ${ECR_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com
-                            docker tag ${IMAGE_NAME}:${VERSION} ${ECR_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com/${ECR_REPO}:${VERSION}
-                            docker push ${ECR_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com/${ECR_REPO}:${VERSION}
-                        """
-                    }
+                withAWS(credentials: 'jenkins-ecr', region: 'us-east-1') {
+                    sh """
+                        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        docker tag ${IMAGE_NAME}:${VERSION} ${ECR_REGISTRY}/${ECR_REPO}:${VERSION}
+                        docker push ${ECR_REGISTRY}/${ECR_REPO}:${VERSION}
+                    """
                 }
             }
         }
+
     }
 
     post {
@@ -117,7 +107,7 @@ pipeline {
             cleanWs()
         }
         success {
-            echo "Pipeline completed successfully! Docker image pushed to ECR."
+            echo "Pipeline completed successfully! Version: ${VERSION}"
         }
         failure {
             echo "Pipeline failed!"
