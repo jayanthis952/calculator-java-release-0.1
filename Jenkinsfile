@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        NEXUS_URL = "http://34.227.76.252:30002"
+        NEXUS_URL = "34.227.76.252:30002"  // no http:// here for nexusArtifactUploader
         ECR_REPO = "772317732952.dkr.ecr.us-east-1.amazonaws.com/calculator-java"
     }
 
@@ -22,35 +22,41 @@ pipeline {
         stage('Set Version') {
             steps {
                 script {
-                    // Properly declare VERSION
+                    // Get version from POM
                     def VERSION = sh(
                         script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout",
                         returnStdout: true
                     ).trim()
                     echo "Project version: ${VERSION}"
-                    
-                    // Set DOCKER_IMAGE as environment variable so all stages can use it
-                    env.DOCKER_IMAGE = "calculator-java:${VERSION}"
+
+                    // Set environment variables for Docker and later stages
                     env.VERSION = VERSION
+                    env.DOCKER_IMAGE = "calculator-java:${VERSION}"
                 }
             }
         }
 
         stage('Upload to Nexus') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
-                    nexusArtifactUploader(
-                        nexusVersion: 'nexus3',
-                        protocol: 'http',
-                        nexusUrl: "${NEXUS_URL.replaceAll('http://','')}",
-                        groupId: 'com.example',
-                        version: "${env.VERSION}",
-                        repository: 'maven-releases',
-                        credentialsId: 'nexus-creds',
-                        artifacts: [
-                            [artifactId: 'calculator-java', classifier: '', file: "target/calculator-java-${env.VERSION}.jar", type: 'jar']
-                        ]
-                    )
+                script {
+                    // Decide repository based on version type
+                    def repo = env.VERSION.endsWith('-SNAPSHOT') ? 'maven-snapshots' : 'maven-releases'
+                    echo "Uploading to Nexus repository: ${repo}"
+
+                    withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                        nexusArtifactUploader(
+                            nexusVersion: 'nexus3',
+                            protocol: 'http',
+                            nexusUrl: "${NEXUS_URL}",
+                            groupId: 'com.example',
+                            version: "${env.VERSION}",
+                            repository: repo,
+                            credentialsId: 'nexus-creds',
+                            artifacts: [
+                                [artifactId: 'calculator-java', classifier: '', file: "target/calculator-java-${env.VERSION}.jar", type: 'jar']
+                            ]
+                        )
+                    }
                 }
             }
         }
@@ -78,7 +84,7 @@ pipeline {
                         aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
                         aws configure set default.region us-east-1
 
-                        aws ecr get-login-password | docker login --username AWS --password-stdin 772317732952.dkr.ecr.us-east-1.amazonaws.com
+                        aws ecr get-login-password | docker login --username AWS --password-stdin ${ECR_REPO.split('/')[0]}
                         docker tag ${env.DOCKER_IMAGE} ${ECR_REPO}:${env.VERSION}
                         docker push ${ECR_REPO}:${env.VERSION}
                     """
