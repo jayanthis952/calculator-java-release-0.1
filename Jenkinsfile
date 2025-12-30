@@ -57,7 +57,7 @@ pipeline {
                     ]],
                     credentialsId: 'nexus-creds',
                     groupId: 'com.example',
-                    nexusUrl: 'http://34.227.76.252:30002',
+                    nexusUrl: '34.227.76.252:30002',   // FIXED: removed extra http://
                     nexusVersion: 'nexus3',
                     protocol: 'http',
                     repository: 'maven-releases',
