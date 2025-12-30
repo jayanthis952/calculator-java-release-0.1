@@ -2,79 +2,71 @@ pipeline {
     agent any
 
     environment {
-        VERSION = "1.0.16"
-        NEXUS_URL = "34.227.76.252:30002"   // just the host:port
-        NEXUS_USER = credentials('nexus-user') // Jenkins credentials ID for Nexus username
-        NEXUS_PASS = credentials('nexus-pass') // Jenkins credentials ID for Nexus password
-        AWS_ACCOUNT_ID = "772317732952"
-        AWS_REGION = "us-east-1"
-        ECR_REPO = "calculator-java"
-        IMAGE_TAG = "${VERSION}"
+        VERSION = "1.0.16"  // Update version as needed
+        NEXUS_URL = "http://34.227.76.252:30002"
+        DOCKER_IMAGE = "calculator-java:${VERSION}"
+        ECR_REPO = "772317732952.dkr.ecr.us-east-1.amazonaws.com/calculator-java"
     }
 
     stages {
+
         stage('Checkout SCM') {
             steps {
-                checkout scm
+                git url: 'https://github.com/jayanthis952/calculator-java-release-0.1.git', branch: 'main'
             }
         }
 
-        stage('Build with Maven') {
+        stage('Build & Test') {
             steps {
-                sh "mvn clean package -DskipTests"
+                sh 'mvn clean install'
             }
         }
 
         stage('Upload to Nexus') {
             steps {
-                nexusArtifactUploader(
-                    nexusUrl: "http://${NEXUS_URL}",
-                    nexusVersion: 'nexus3',
-                    protocol: 'http',
-                    repository: 'maven-releases',
-                    credentialsId: 'nexus-creds', // Jenkins credentials ID for Nexus
-                    groupId: 'com.example',
-                    version: "${VERSION}",
-                    artifacts: [[
-                        artifactId: 'calculator-java',
-                        classifier: '',
-                        type: 'jar',
-                        file: "target/calculator-java-${VERSION}.jar"
-                    ]]
-                )
+                withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                    nexusArtifactUploader(
+                        nexusVersion: 'nexus3',
+                        protocol: 'http',
+                        nexusUrl: "${NEXUS_URL.replaceAll('http://','')}",
+                        groupId: 'com.example',
+                        version: "${VERSION}",
+                        repository: 'maven-releases',
+                        credentialsId: 'nexus-creds',
+                        artifacts: [
+                            [artifactId: 'calculator-java', classifier: '', file: "target/calculator-java-${VERSION}.jar", type: 'jar']
+                        ]
+                    )
+                }
             }
         }
 
         stage('Docker Build') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'nexus-user', variable: 'NEXUS_USER'),
-                    string(credentialsId: 'nexus-pass', variable: 'NEXUS_PASS')
-                ]) {
+                withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
                     sh """
                         docker build \
-                            --build-arg NEXUS_USER=${NEXUS_USER} \
-                            --build-arg NEXUS_PASS=${NEXUS_PASS} \
-                            --build-arg NEXUS_URL=http://${NEXUS_URL} \
-                            --build-arg VERSION=${VERSION} \
-                            -t ${ECR_REPO}:${IMAGE_TAG} .
+                        --build-arg NEXUS_USER=${NEXUS_USER} \
+                        --build-arg NEXUS_PASS=${NEXUS_PASS} \
+                        --build-arg NEXUS_URL=${NEXUS_URL} \
+                        --build-arg VERSION=${VERSION} \
+                        -t ${DOCKER_IMAGE} .
                     """
                 }
             }
         }
 
-        stage('Push to ECR') {
+        stage('Push Docker Image to ECR') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh """
-                        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-                        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-                        aws configure set default.region ${AWS_REGION}
-
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-
-                        docker tag ${ECR_REPO}:${IMAGE_TAG} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}
-                        docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}
+                        aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+                        aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+                        aws configure set default.region us-east-1
+                        
+                        aws ecr get-login-password | docker login --username AWS --password-stdin 772317732952.dkr.ecr.us-east-1.amazonaws.com
+                        docker tag ${DOCKER_IMAGE} ${ECR_REPO}:${VERSION}
+                        docker push ${ECR_REPO}:${VERSION}
                     """
                 }
             }
@@ -83,13 +75,9 @@ pipeline {
 
     post {
         always {
-            cleanWs()
-        }
-        success {
-            echo "Pipeline completed successfully!"
-        }
-        failure {
-            echo "Pipeline failed!"
+            node {
+                cleanWs()
+            }
         }
     }
 }
