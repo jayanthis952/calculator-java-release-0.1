@@ -1,96 +1,118 @@
-pipeline{
+pipeline {
     agent any
-    environment{
-        PROJECT_KEY="java-calculator-k8s"
-        VERSION="1.0.${env.BUILD_NUMBER}"
-        IMAGE_NAME="calculator-java"
-        NEXUS_URL="http://34.227.76.252:30002"
-        ECR_REPO="772317732952.dkr.ecr.us-east-1.amazonaws.com/calculator-java"
+
+    environment {
+        PROJECT_KEY     = "java-calculator-k8s"
+        VERSION         = "1.0.${BUILD_NUMBER}"
+        IMAGE_NAME      = "calculator-java"
+
+        AWS_REGION      = "us-east-1"
+        AWS_ACCOUNT_ID  = "772317732952"
+        ECR_REPO        = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}"
+
+        NEXUS_URL       = "http://34.227.76.252:300"
+        NEXUS_REPO      = "maven-releases"
+        GROUP_ID        = "com.example"
     }
-    stages{
-        stage('SCM'){
-            steps{
-                git branch: 'main', url: 'https://github.com/jayanthis952/calculator-java-release-0.1.git'
+
+    stages {
+
+        stage('Checkout Source Code') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/jayanthis952/calculator-java-release-0.1.git'
             }
         }
 
-        stage('Sonar Analysis'){
-            steps{
-                withSonarQubeEnv('sonar-k8s'){
-                    sh """ mvn clean verify sonar:sonar \
-                    -Dsonar.projectKey=${PROJECT_KEY} \
-                    -Dsonar.projectName=${PROJECT_KEY} \
-                    -Drevision=${VERSION}
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar-k8s') {
+                    sh """
+                    mvn clean verify sonar:sonar \
+                      -Dsonar.projectKey=${PROJECT_KEY} \
+                      -Dsonar.projectName=${PROJECT_KEY} \
+                      -Drevision=${VERSION}
                     """
                 }
             }
         }
 
-        stage('Quality Gate Validate'){
-            steps{
-                timeout(time: 5, unit: 'MINUTES'){
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
             }
-            post{
-                success{
-                    echo "Quality Gate Passed"
+            post {
+                success {
+                    echo "✅ Quality Gate Passed"
                 }
-                failure{
-                    echo "Quality Gate Failed"
+                failure {
+                    echo "❌ Quality Gate Failed"
                 }
             }
         }
 
-        stage('Build'){
-            steps{
-                sh "mvn clean install -Drevision=${VERSION}"
+        stage('Build Application') {
+            steps {
+                sh """
+                mvn clean install -Drevision=${VERSION}
+                """
             }
         }
 
-        stage('Upload to Nexus'){
-            steps{
-                withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]){
-                    nexusArtifactUploader(
-                        nexusVersion: 'nexus3',
-                        protocol: 'http',
-                        nexusUrl: "${NEXUS_URL.replaceAll('http://','')}",
-                        groupId: 'com.example',
-                        version: "${VERSION}",
-                        repository: 'maven-releases',
-                        credentialsId: 'nexus-creds',
-                        artifacts: [
-                            [artifactId: 'calculator-java', classifier: '', file: "target/calculator-java-${VERSION}.jar", type: 'jar']
+        stage('Upload Artifact to Nexus') {
+            steps {
+                nexusArtifactUploader(
+                    nexusVersion: 'nexus3',
+                    protocol: 'http',
+                    nexusUrl: '34.227.76.252:300',
+                    repository: "${NEXUS_REPO}",
+                    credentialsId: 'nexus-creds',
+                    groupId: "${GROUP_ID}",
+                    version: "${VERSION}",
+                    artifacts: [
+                        [
+                            artifactId: 'calculator-java',
+                            classifier: '',
+                            file: "target/calculator-java-${VERSION}.jar",
+                            type: 'jar'
                         ]
-                    )
-                }
+                    ]
+                )
             }
         }
 
-        stage('Docker Image Build'){
-            agent any
-            steps{
-                withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]){
+        stage('Docker Image Build') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'nexus-creds',
+                        usernameVariable: 'NEXUS_USER',
+                        passwordVariable: 'NEXUS_PASS'
+                    )
+                ]) {
                     sh """
-                        docker build \
-                        --build-arg NEXUS_URL=${NEXUS_URL} \
-                        --build-arg NEXUS_USER=$NEXUS_USER \
-                        --build-arg NEXUS_PASS=$NEXUS_PASS \
-                        --build-arg VERSION=${VERSION} \
-                        -t ${IMAGE_NAME}:${VERSION} .
+                    docker build \
+                      --build-arg NEXUS_URL=${NEXUS_URL} \
+                      --build-arg NEXUS_USERNAME=${NEXUS_USER} \
+                      --build-arg NEXUS_PASSWORD=${NEXUS_PASS} \
+                      --build-arg ARTIFACT_VERSION=${VERSION} \
+                      -t ${IMAGE_NAME}:${VERSION} .
                     """
                 }
             }
         }
 
-        stage('Push Docker Image to ECR'){
-            agent any
-            steps{
-                withAWS(credentials:'aws-ecr-creds', region:'us-east-1'){
+        stage('Push Image to AWS ECR') {
+            steps {
+                withAWS(credentials: 'aws-ecr-creds', region: "${AWS_REGION}") {
                     sh """
-                        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_REPO}
-                        docker tag ${IMAGE_NAME}:${VERSION} ${ECR_REPO}:${VERSION}
-                        docker push ${ECR_REPO}:${VERSION}
+                    aws ecr get-login-password --region ${AWS_REGION} \
+                    | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+                    docker tag ${IMAGE_NAME}:${VERSION} ${ECR_REPO}:${VERSION}
+                    docker push ${ECR_REPO}:${VERSION}
                     """
                 }
             }
@@ -98,8 +120,12 @@ pipeline{
     }
 
     post {
-        always {
-            cleanWs()
+        success {
+            echo "🎉 Docker image pushed successfully to ECR"
+            echo "📦 Image: ${ECR_REPO}:${VERSION}"
+        }
+        failure {
+            echo "🔥 Pipeline execution failed"
         }
     }
 }
