@@ -10,7 +10,7 @@ pipeline {
         AWS_ACCOUNT_ID  = "772317732952"
         ECR_REPO        = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}"
 
-        NEXUS_URL       = "http://34.227.76.252:300"
+        NEXUS_URL       = "http://98.85.254.195:30002/"
         NEXUS_REPO      = "maven-releases"
         GROUP_ID        = "com.example"
     }
@@ -66,7 +66,7 @@ pipeline {
                 nexusArtifactUploader(
                     nexusVersion: 'nexus3',
                     protocol: 'http',
-                    nexusUrl: '34.227.76.252:300',
+                    nexusUrl: '98.85.254.195:30002',
                     repository: "${NEXUS_REPO}",
                     credentialsId: 'nexus-creds',
                     groupId: "${GROUP_ID}",
