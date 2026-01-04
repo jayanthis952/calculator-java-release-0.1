@@ -13,8 +13,6 @@ pipeline {
         NEXUS_URL       = "http://98.85.254.195:30002"
         NEXUS_REPO      = "maven-releases"
         GROUP_ID        = "com.example"
-
-        GITOPS_REPO     = "https://github.com/jayanthis952/calculator-java-gitops.git"
     }
 
     stages {
@@ -108,41 +106,14 @@ pipeline {
                 }
             }
         }
-
-        stage('Update Image in GitOps Repo') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'github-creds',
-                        usernameVariable: 'GIT_USER',
-                        passwordVariable: 'GIT_TOKEN'
-                    )
-                ]) {
-                    sh """
-                    rm -rf calculator-java-gitops
-                    git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/jayanthis952/calculator-java-gitops.git
-                    cd calculator-java-gitops
-
-                    sed -i 's|image:.*|image: ${ECR_REPO}:${VERSION}|' pod.yaml
-
-                    git config user.name "jenkins"
-                    git config user.email "jenkins@devops.com"
-
-                    git add pod.yaml
-                    git commit -m "Update image to ${VERSION}"
-                    git push
-                    """
-                }
-            }
-        }
     }
 
     post {
         success {
-            echo "✅ Image pushed to ECR and GitOps repo updated"
+            echo "Image pushed to ECR: ${ECR_REPO}:${VERSION}"
         }
         failure {
-            echo "❌ Pipeline execution failed"
+            echo "Pipeline execution failed"
         }
     }
 }
