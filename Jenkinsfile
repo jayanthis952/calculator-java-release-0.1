@@ -10,8 +10,8 @@ pipeline {
         AWS_ACCOUNT_ID  = "772317732952"
         ECR_REPO        = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}"
 
-        NEXUS_URL       = "http://98.85.254.195:30002"
-        NEXUS_REPO      = "maven-releases"
+        NEXUS_URL       = "http://54.144.8.25:30002"
+        NEXUS_REPO      = "maven-releases1"
         GROUP_ID        = "com.example"
 
         GITOPS_REPO     = "https://github.com/jayanthis952/calculator-java-gitops.git"
@@ -58,7 +58,7 @@ pipeline {
                 nexusArtifactUploader(
                     nexusVersion: 'nexus3',
                     protocol: 'http',
-                    nexusUrl: '98.85.254.195:30002',
+                    nexusUrl: '54.144.8.25:30002',
                     repository: "${NEXUS_REPO}",
                     credentialsId: 'nexus-creds',
                     groupId: "${GROUP_ID}",
