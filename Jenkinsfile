@@ -10,7 +10,7 @@ pipeline {
         AWS_ACCOUNT_ID  = "772317732952"
         ECR_REPO        = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}"
 
-        NEXUS_URL       = "http://54.144.8.25:30002"
+        NEXUS_URL       = "http://3.94.114.187:30002"
         NEXUS_REPO      = "maven-releases1"
         GROUP_ID        = "com.example"
 
